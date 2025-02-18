@@ -65,8 +65,8 @@ This project implements **bitstream encoding** using **physical** and **logical 
 ---
 
 ## 🎨 Development Roadmap
-- ✅ Add support for all codes from the manual
 - ✅ Add signal visualization
+- ✅ Add animation
 - 🔄 Implement result saving in `.csv`
 - 🔄 Develop a Docker container for cross-platform execution (optional)
 
