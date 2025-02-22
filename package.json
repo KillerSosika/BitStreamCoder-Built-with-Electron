@@ -1,0 +1,16 @@
+{
+  "name": "bitstreamcoder-built-with-electron",
+  "version": "1.0.0",
+  "description": "This project implements **bitstream encoding** using **physical** and **logical codes**, as well as **scrambling**. It allows visualizing data encoding and experimenting with different signal transformation methods.",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^34.2.0"
+  }
+}
