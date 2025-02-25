@@ -1,29 +1,29 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+// main.js
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
 
-let mainWindow;
-let helpWindow;
+function createWindow() {
+  const mainWindow = new BrowserWindow({
+    width: 1300,
+    height: 600,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js') // якщо потрібно
+    }
+  });
 
-app.whenReady().then(() => {
-    mainWindow = new BrowserWindow({
-        width: 1000,
-        height: 700,
-        webPreferences: {
-            nodeIntegration: true
-        }
-    });
-    mainWindow.loadFile('index.html');
+  mainWindow.loadFile(path.join(__dirname, 'app', 'index.html'));
+}
+
+app.on('ready', () => {
+  createWindow();
 });
 
-ipcMain.on('open-help', () => {
-    if (!helpWindow) {
-        helpWindow = new BrowserWindow({
-            width: 600,
-            height: 400,
-            webPreferences: {
-                nodeIntegration: true
-            }
-        });
-        helpWindow.loadFile('help.html');
-        helpWindow.on('closed', () => helpWindow = null);
-    }
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
