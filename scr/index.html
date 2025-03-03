@@ -1,20 +1,345 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>BitStreamCoder + React (CDN)</title>
-  </head>
-  <body>
-    <div id="root"></div>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>BitStreamCoder — Manchester ±1, 2B1Q ±3, Bigger Scale</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 1rem;
+    }
+    #controls {
+      margin-bottom: 1rem;
+    }
+    #canvasContainer {
+      width: 1200px;  
+      height: 800px;  
+      overflow: auto; 
+      border: 1px solid #000;
+      position: relative;
+      background: #fff;
+    }
+    #mainCanvas {
+      display: block;
+      background: #fff;
+    }
+    .checkboxes label {
+      margin-right: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>BitStreamCoder — “Bigger” Manchester &amp; 2B1Q</h1>
 
-    <!-- React і ReactDOM з CDN -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <div id="controls">
+    <label>Бітова послідовність (0/1):</label>
+    <input type="text" id="bitStringInput" value="1011010" />
+    <button id="btnDraw">Намалювати</button>
+    <button id="btnScramble">Scrambler</button>
+    <button id="btnSuperfluous">Superfluous bits</button>
+  </div>
 
-    <!-- Babel для JSX "на льоту" -->
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  <div class="checkboxes">
+    <label><input type="checkbox" id="cbNRZ" checked> NRZ</label>
+    <label><input type="checkbox" id="cbNRZI1"> NRZI(1)</label>
+    <label><input type="checkbox" id="cbNRZI0"> NRZI(0)</label>
+    <label><input type="checkbox" id="cbAMI"> AMI</label>
+    <label><input type="checkbox" id="cbManch"> Manchester(±1)</label>
+    <label><input type="checkbox" id="cbBipolar"> Bipolar(RZ)</label>
+    <label><input type="checkbox" id="cb2B1Q" checked> 2B1Q(±3,±1)</label>
+  </div>
 
-    <!-- Ваш React-код у файлі index.js (JSX) -->
-    <script type="text/babel" src="./index.js"></script>
-  </body>
+  <div id="canvasContainer">
+    <canvas id="mainCanvas"></canvas>
+  </div>
+
+<script>
+/***************************************************
+ * 1) ФУНКЦІЇ КОДУВАННЯ (Оновлені Manchester і 2B1Q)
+ ***************************************************/
+
+// NRZ: 0->0, 1->+1
+function encodeNRZ(bits) {
+  let res = [];
+  let t = 0;
+  bits.forEach(bit => {
+    let level = (bit === 1) ? 1 : 0;
+    res.push({ x: t,   y: level });
+    res.push({ x: t+1, y: level });
+    t += 1;
+  });
+  return res;
+}
+
+// NRZI(1): якщо 1 => інвертуємо
+function encodeNRZI1(bits) {
+  let res = [];
+  let t = 0;
+  let current = 0;
+  bits.forEach(bit => {
+    if (bit === 1) current = (current === 0) ? 1 : 0;
+    res.push({ x: t,   y: current });
+    res.push({ x: t+1, y: current });
+    t += 1;
+  });
+  return res;
+}
+
+// NRZI(0): якщо 0 => інвертуємо
+function encodeNRZI0(bits) {
+  let res = [];
+  let t = 0;
+  let current = 0;
+  bits.forEach(bit => {
+    if (bit === 0) current = (current === 0) ? 1 : 0;
+    res.push({ x: t,   y: current });
+    res.push({ x: t+1, y: current });
+    t += 1;
+  });
+  return res;
+}
+
+// AMI: 1-> +polarity/-polarity, 0->0
+function encodeAMI(bits) {
+  let res = [];
+  let t = 0;
+  let polarity = 1;
+  bits.forEach(bit => {
+    let level = 0;
+    if (bit === 1) {
+      level = polarity;
+      polarity = -polarity;
+    }
+    res.push({ x: t,   y: level });
+    res.push({ x: t+1, y: level });
+    t += 1;
+  });
+  return res;
+}
+
+// Manchester (±1): біт 1 -> перша половина +1, друга половина –1
+//                 біт 0 -> перша половина –1, друга половина +1
+function encodeManchesterPlusMinus1(bits) {
+  let res = [];
+  let t = 0;
+  bits.forEach(bit => {
+    if (bit === 1) {
+      // 1 => [ +1 ... -1 ]
+      res.push({ x: t,     y: +1 });
+      res.push({ x: t+0.5, y: +1 });
+      res.push({ x: t+0.5, y: -1 });
+      res.push({ x: t+1,   y: -1 });
+    } else {
+      // 0 => [ -1 ... +1 ]
+      res.push({ x: t,     y: -1 });
+      res.push({ x: t+0.5, y: -1 });
+      res.push({ x: t+0.5, y: +1 });
+      res.push({ x: t+1,   y: +1 });
+    }
+    t += 1;
+  });
+  return res;
+}
+
+// Bipolar(RZ): 1 -> півбіта +/–, друга половина 0
+function encodeBipolarRZ(bits) {
+  let res = [];
+  let t = 0;
+  let polarity = 1;
+  bits.forEach(bit => {
+    if (bit === 1) {
+      res.push({ x: t,     y: polarity });
+      res.push({ x: t+0.5, y: polarity });
+      res.push({ x: t+0.5, y: 0 });
+      res.push({ x: t+1,   y: 0 });
+      polarity = -polarity;
+      t += 1;
+    } else {
+      res.push({ x: t,   y: 0 });
+      res.push({ x: t+1, y: 0 });
+      t += 1;
+    }
+  });
+  return res;
+}
+
+// 2B1Q(±3, ±1): "00" => –3, "01" => –1, "11" => +1, "10" => +3
+// кожні 2 біти => 2 time units
+function encode2B1QplusMinus3(bits) {
+  let res = [];
+  let t = 0;
+  for (let i = 0; i < bits.length; i += 2) {
+    const b1 = bits[i] !== undefined ? bits[i] : 0;
+    const b2 = bits[i+1] !== undefined ? bits[i+1] : 0;
+    let val = 0;
+    if (b1===0 && b2===0)      val = -3;
+    else if (b1===0 && b2===1) val = -1;
+    else if (b1===1 && b2===1) val = +1;
+    else if (b1===1 && b2===0) val = +3;
+    res.push({ x: t,   y: val });
+    res.push({ x: t+2, y: val });
+    t += 2;
+  }
+  return res;
+}
+
+/***************************************************
+ * 2) SCRAMBLER і SUPERFLUOUS
+ ***************************************************/
+function scrambleBits(bits) {
+  // XOR з ключем [1,0,1,0]
+  const key = [1,0,1,0];
+  let res = [];
+  let k = 0;
+  for (let i = 0; i < bits.length; i++) {
+    res.push(bits[i] ^ key[k]);
+    k = (k+1) % key.length;
+  }
+  return res;
+}
+
+function addSuperfluousBits(bits) {
+  // додаємо 1 після кожних 4 біт
+  let res = [];
+  for (let i = 0; i < bits.length; i++) {
+    res.push(bits[i]);
+    if ((i+1) % 4 === 0) {
+      res.push(1);
+    }
+  }
+  return res;
+}
+
+/***************************************************
+ * 3) МАЛЮВАННЯ “STEP-LIKE” (з вертик. переходами)
+ *    Збільшені scaleX, scaleY => “більше”
+ ***************************************************/
+function drawStepSignalWithLabels(ctx, data, offsetY, color, label) {
+  // Збільшуємо scaleX, scaleY
+  const scaleX = 30; // px на 1 time unit
+  const scaleY = 50; // px на 1 "вольт"
+  ctx.strokeStyle = color;
+  ctx.fillStyle = "#000";
+
+  ctx.fillText(label, 10, offsetY - 40);
+
+  if (data.length === 0) return;
+  let x0 = data[0].x * scaleX;
+  let y0 = offsetY - (data[0].y * scaleY);
+
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+
+  for (let i = 0; i < data.length - 1; i++) {
+    let x1 = data[i+1].x * scaleX;
+    let y1 = offsetY - (data[i+1].y * scaleY);
+
+    if (y1 !== y0) {
+      // вертикальний перехід
+      ctx.lineTo(x1, y0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+    } else {
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+
+    // Підпис потенціалу посередині відрізка
+    let midX = ((data[i].x + data[i+1].x)/2) * scaleX;
+    let midY = (y0 + y1)/2;
+    let val = data[i].y; // можна брати середнє
+    let labelV = (val >= 0 ? "+" + val + "V" : val + "V");
+    ctx.fillText(labelV, midX - 15, midY - 5);
+
+    x0 = x1;
+    y0 = y1;
+  }
+}
+
+/***************************************************
+ * 4) ОСНОВНИЙ КОД
+ ***************************************************/
+window.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('bitStringInput');
+  const btnDraw = document.getElementById('btnDraw');
+  const btnScramble = document.getElementById('btnScramble');
+  const btnSuperfluous = document.getElementById('btnSuperfluous');
+  const canvas = document.getElementById('mainCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let currentBits = input.value.replace(/[^01]/g, "").split("").map(b => parseInt(b,10));
+
+  // Перелік кодів: [idЧекбокса, label, color, func]
+  const codes = [
+    ["cbNRZ",      "NRZ",           "blue",    encodeNRZ],
+    ["cbNRZI1",    "NRZI(1)",       "green",   encodeNRZI1],
+    ["cbNRZI0",    "NRZI(0)",       "tomato",  encodeNRZI0],
+    ["cbAMI",      "AMI",           "red",     encodeAMI],
+    ["cbManch",    "Manchester(±1)","purple",  encodeManchesterPlusMinus1],
+    ["cbBipolar",  "Bipolar(RZ)",   "orange",  encodeBipolarRZ],
+    ["cb2B1Q",     "2B1Q(±3,±1)",   "magenta", encode2B1QplusMinus3],
+  ];
+
+  function updateBitsFromInput() {
+    let bitStr = input.value.replace(/[^01]/g, "");
+    input.value = bitStr;
+    currentBits = bitStr.split("").map(b => parseInt(b,10));
+  }
+
+  function drawAll() {
+    // Оцінка ширини canvas (з запасом)
+    let lengthEstimate = currentBits.length * 2 + 10; 
+    let neededWidth = lengthEstimate * 30; // scaleX=30
+    if (neededWidth < 800) neededWidth = 800;
+    canvas.width = neededWidth;
+    canvas.height = 1200; // більше місця по вертикалі
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let offsetYBase = 100;
+    let offsetStep = 150; // більше відстань між сигналами
+    let shownIndex = 0;
+
+    codes.forEach(code => {
+      let [cbId, label, color, func] = code;
+      let cb = document.getElementById(cbId);
+      if (cb && cb.checked) {
+        let data = func(currentBits);
+        drawStepSignalWithLabels(
+          ctx, data,
+          offsetYBase + shownIndex*offsetStep,
+          color, label
+        );
+        shownIndex++;
+      }
+    });
+  }
+
+  btnDraw.addEventListener('click', () => {
+    updateBitsFromInput();
+    drawAll();
+  });
+
+  btnScramble.addEventListener('click', () => {
+    currentBits = scrambleBits(currentBits);
+    input.value = currentBits.join("");
+    drawAll();
+  });
+
+  btnSuperfluous.addEventListener('click', () => {
+    currentBits = addSuperfluousBits(currentBits);
+    input.value = currentBits.join("");
+    drawAll();
+  });
+
+  // Початкове малювання
+  drawAll();
+});
+</script>
+</body>
 </html>
